@@ -11,7 +11,9 @@
         "vscode": {
             "extensions": [
                 "dbaeumer.vscode-eslint",
-                "esbenp.prettier-vscode"
+                "esbenp.prettier-vscode",
+                "ardisaurus.gitflow-actions-sidebar",
+                "codezombiech.gitignore"
             ],
             "settings": {
                 "editor.formatOnSave": true,
