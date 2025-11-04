@@ -4,6 +4,7 @@ import http from "http";
 import ngrok from "@ngrok/ngrok";
 import { logger } from "./logger.js";
 import { getErrorMessage } from "./types/index.js";
+import { ServerConfig } from "./config.js";
 
 /**
  * Verify JWT authentication for incoming requests
@@ -53,17 +54,17 @@ function createAuthenticationVerifier(
 /**
  * Start the MCP server with SSE transport
  */
-export function startSseServer(
-  server: McpServer,
-  jwtSecret: string | undefined,
-  jwtVerifyOptions: object
-): void {
-  const port = parseInt(process.env.MCP_PORT || "3000", 10);
-  const endpoint = process.env.MCP_ENDPOINT || "/message";
+export function startSseServer(server: McpServer, config: ServerConfig): void {
+  if (!config.sse) {
+    throw new Error("SSE configuration is missing");
+  }
+
+  const port = config.sse.port;
+  const endpoint = config.sse.endpoint;
 
   const verifyRequestAuthentication = createAuthenticationVerifier(
-    jwtSecret,
-    jwtVerifyOptions
+    config.jwt?.secret,
+    config.jwt?.verifyOptions || { algorithms: ["HS256"] }
   );
 
   // Store active transports by session ID
@@ -179,20 +180,17 @@ export function startSseServer(
     logger.info(`Message endpoint: http://localhost:${port}${endpoint}`);
 
     // Check if ngrok is enabled
-    const ngrokEnabled = process.env.MCP_NGROK_ENABLED === "true";
-    const ngrokAuthtoken = process.env.MCP_NGROK_AUTHTOKEN;
-
-    if (ngrokEnabled) {
-      if (!ngrokAuthtoken) {
+    if (config.sse?.ngrok?.enabled) {
+      if (!config.sse.ngrok.authtoken) {
         logger.warn(
-          "WARNING: MCP_NGROK_ENABLED is true but MCP_NGROK_AUTHTOKEN is not set. Skipping ngrok tunnel."
+          "WARNING: ngrok is enabled but authtoken is not set. Skipping ngrok tunnel."
         );
       } else {
         try {
           // Establish ngrok tunnel
           const listener = await ngrok.connect({
             addr: port,
-            authtoken: ngrokAuthtoken,
+            authtoken: config.sse.ngrok.authtoken,
           });
 
           const ngrokUrl = listener.url();

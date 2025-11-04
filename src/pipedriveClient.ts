@@ -11,50 +11,45 @@ import {
 } from "pipedrive/v1";
 import Bottleneck from "bottleneck";
 import { ApiClients } from "./types/index.js";
+import { ServerConfig } from "./config.js";
 
 /**
- * Rate limiter for Pipedrive API calls
+ * Create a rate limiter for Pipedrive API calls
  */
-const limiter = new Bottleneck({
-  minTime: Number(process.env.PIPEDRIVE_RATE_LIMIT_MIN_TIME_MS || 250),
-  maxConcurrent: Number(process.env.PIPEDRIVE_RATE_LIMIT_MAX_CONCURRENT || 2),
-});
-
-/**
- * Wraps an API client with rate limiting using a Proxy
- */
-const withRateLimit = <T extends object>(client: T): T => {
-  return new Proxy(client, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-      if (typeof value === "function") {
-        return (...args: unknown[]) =>
-          limiter.schedule(() => (value as Function).apply(target, args));
-      }
-      return value;
-    },
+function createRateLimiter(config: ServerConfig["pipedrive"]["rateLimit"]) {
+  return new Bottleneck({
+    minTime: config.minTimeMs,
+    maxConcurrent: config.maxConcurrent,
   });
-};
+}
 
 /**
  * Initialize Pipedrive API clients with rate limiting
  */
-export function initializePipedriveClients(): ApiClients {
-  // Validate required environment variables
-  if (!process.env.PIPEDRIVE_API_TOKEN) {
-    throw new Error("PIPEDRIVE_API_TOKEN environment variable is required");
-  }
+export function initializePipedriveClients(config: ServerConfig): ApiClients {
+  // Create rate limiter with configuration
+  const limiter = createRateLimiter(config.pipedrive.rateLimit);
 
-  if (!process.env.PIPEDRIVE_DOMAIN) {
-    throw new Error(
-      "PIPEDRIVE_DOMAIN environment variable is required (e.g., 'ukkofi.pipedrive.com')"
-    );
-  }
+  /**
+   * Wraps an API client with rate limiting using a Proxy
+   */
+  const withRateLimit = <T extends object>(client: T): T => {
+    return new Proxy(client, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value === "function") {
+          return (...args: unknown[]) =>
+            limiter.schedule(() => (value as Function).apply(target, args));
+        }
+        return value;
+      },
+    });
+  };
 
   // Initialize Pipedrive API configuration with API token and custom domain
   const apiConfig = new Configuration({
-    apiKey: process.env.PIPEDRIVE_API_TOKEN,
-    basePath: `https://${process.env.PIPEDRIVE_DOMAIN}/api/v1`,
+    apiKey: config.pipedrive.apiToken,
+    basePath: `https://${config.pipedrive.domain}/api/v1`,
   });
 
   // Initialize and wrap API clients with rate limiting
