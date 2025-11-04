@@ -5,9 +5,9 @@
 This is a **Model Context Protocol (MCP) server** that exposes Pipedrive CRM data to LLM applications. The architecture consists of:
 
 - **Modular structure**:
-  - `src/index.ts` (~335 lines) - server configuration, API setup, and transport logic
-  - `src/tools/` - 16 individual tool files + shared types and registration
-  - `src/prompts.ts` - 8 MCP prompt definitions
+  - `src/index.ts` - server configuration, API setup, and transport logic
+  - `src/tools/` - individual tool files + shared types and registration
+  - `src/prompts/` - individual prompt files + shared types and registration
   - `src/logger.ts` - transport-aware logging utility
 - **Dual transport modes**: stdio (local CLI) and SSE (HTTP server for remote access)
 - **Rate-limited Pipedrive API wrapper** using Bottleneck proxy pattern
@@ -169,9 +169,10 @@ if (transportType === "sse") {
 
 ### TypeScript Configuration
 
-- **Module**: `Node16` with `moduleResolution: Node16` - enables `.js` extensions in imports (required by MCP SDK)
+- **Module**: `NodeNext` with `moduleResolution: NodeNext` - modern ES module resolution for Node.js 22+
 - **Target**: `ES2022` - uses native top-level await
-- **Type**: `"module"` in package.json - ES modules only
+- **Type**: `"module"` in package.json - ES modules only (outputs `.js` files treated as ES modules)
+- **Output**: `dist/` directory (matches package.json main entry point)
 - **Strict mode enabled** but uses `@ts-ignore` for incomplete Pipedrive SDK types in tool files
 
 ### API Client Initialization
@@ -227,15 +228,73 @@ src/tools/
 - **`search-*`** tools - Use ItemSearchApi for cross-entity searching
 - All tools return **full object dumps** including custom fields (Pipedrive extends base schemas per customer)
 
+## Key Prompts Implemented
+
+8 prompts total, each in its own file under `src/prompts/`:
+
+### Prompt Files Structure
+
+```
+src/prompts/
+├── types.ts              # Shared type: PromptRegistration
+├── index.ts              # registerPrompts() function that imports and registers all prompts
+├── listAllDeals.ts       # Prompt to list and filter deals
+├── listAllPersons.ts     # Prompt to list contacts/persons
+├── listAllPipelines.ts   # Prompt to list pipelines and stages
+├── analyzeDeals.ts       # Prompt to analyze deal patterns and insights
+├── analyzeContacts.ts    # Prompt to analyze contact/person patterns
+├── analyzeLeads.ts       # Prompt to analyze lead patterns
+├── comparePipelines.ts   # Prompt to compare pipeline performance
+└── findHighValueDeals.ts # Prompt to identify high-value opportunities
+```
+
+### Prompt Definition Pattern
+
+Each prompt is defined in its own file following this pattern:
+
+```typescript
+// src/prompts/listTool.ts
+import { PromptRegistration } from "./types.js";
+
+export const registerListTool: PromptRegistration = (server) => {
+  server.prompt("prompt-name", "Description for LLM", {}, () => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: "Prompt instructions for LLM...",
+        },
+      },
+    ],
+  }));
+};
+```
+
+**Key points**:
+
+- Each prompt exports a `PromptRegistration` function
+- Prompts receive only the server instance (no API clients needed)
+- All prompts use empty parameters `{}` (static prompts, no dynamic inputs)
+- Prompts return messages array with user role content
+- Naming convention: camelCase filenames (e.g., `listAllDeals.ts`, `findHighValueDeals.ts`)
+
+### Adding New Prompts
+
+1. Create file in `src/prompts/` with camelCase name
+2. Export a `PromptRegistration` function
+3. Import and register in `src/prompts/index.ts`
+
 ## Common Pitfalls
 
-1. **Don't add import extensions manually** - TypeScript will error. Use `.js` for imports of `.ts` files (Node16 module resolution requirement)
+1. **Don't add import extensions manually** - TypeScript will error. Use `.js` for imports of `.ts` files (NodeNext module resolution requirement for ES modules)
 2. **JWT validation runs at startup** - If `MCP_JWT_SECRET` set, `MCP_JWT_TOKEN` must be valid or server exits
 3. **Pipedrive SDK types are incomplete** - Expect `@ts-ignore` for newer APIs in tool files
 4. **Client-side filtering is intentional** - API filters are limited; tools combine API + manual filtering for flexibility
 5. **Bottleneck proxy breaks instanceof checks** - Proxied clients aren't instances of original class
 6. **Adding new tools** - Create file in `src/tools/`, export `ToolRegistration` function, import and register in `src/tools/index.ts`
-7. **Tool naming convention** - Use camelCase for filenames (e.g., `getDeal.ts`, `searchPersons.ts`)
+7. **Adding new prompts** - Create file in `src/prompts/`, export `PromptRegistration` function, import and register in `src/prompts/index.ts`
+8. **Tool/Prompt naming convention** - Use camelCase for filenames (e.g., `getDeal.ts`, `searchPersons.ts`, `listAllDeals.ts`)
 
 ## Testing Approach
 
