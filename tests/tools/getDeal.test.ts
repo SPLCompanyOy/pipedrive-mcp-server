@@ -166,11 +166,11 @@ describe("getDeal tool", () => {
       const result = await registeredToolHandler({ dealId: 999 });
 
       // Assert
+      // JSON.stringify(undefined) returns undefined, which means the text property is omitted
       expect(result).toEqual({
         content: [
           {
             type: "text",
-            text: undefined,
           },
         ],
       });
